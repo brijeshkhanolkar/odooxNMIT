@@ -26,8 +26,6 @@ export function AttendanceWidget({ attendance: initialAttendance, profileId }: A
       const interval = setInterval(() => {
         setElapsed(Math.floor((Date.now() - checkInTime) / 1000));
       }, 1000);
-      // Initialize immediately
-      setElapsed(Math.floor((Date.now() - checkInTime) / 1000));
       return () => clearInterval(interval);
     }
   }, [attendance]);

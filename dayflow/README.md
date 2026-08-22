@@ -1,4 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Dayflow is a Next.js and Supabase HRMS application.
+
+## Supabase setup
+
+The app is configured to use the supplied Supabase project through a local `.env.local` file. That file is intentionally ignored by Git.
+
+1. In the Supabase SQL Editor, run the migration files in `supabase/migrations` in numeric order (`001` through `015`). Migration `015` enables secure employee self-signup without putting a service-role key in the app.
+2. In **Authentication → URL Configuration**, add `http://localhost:3000/auth/callback` as a redirect URL for local development. Add your deployed equivalent when deploying.
+3. Set `NEXT_PUBLIC_SITE_URL` in `.env.local` to the deployed site URL before enabling email confirmation or password-reset emails.
+4. To use the administrator employee-provisioning flow, add `SUPABASE_SERVICE_ROLE_KEY` to `.env.local`. This secret must remain server-only and must never be given a `NEXT_PUBLIC_` prefix.
+
+### First administrator
+
+Sign up the first employee through `/signup`, then promote that account in the Supabase SQL Editor:
+
+```sql
+UPDATE public.profiles
+SET role_id = (SELECT id FROM public.roles WHERE name = 'admin')
+WHERE email = 'admin@example.com';
+```
+
+Replace `admin@example.com` with the email used at signup. Once promoted, that user can access `/admin`. The administrator can manage existing data with the normal authenticated session; only the **Create employee** flow requires `SUPABASE_SERVICE_ROLE_KEY` because it creates a Supabase Auth account.
+
+Use `.env.example` as the template for another environment.
 
 ## Getting Started
 

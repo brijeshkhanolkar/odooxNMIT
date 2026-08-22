@@ -52,12 +52,16 @@ export default function ReportsPage() {
 }
 
 const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899'];
+const DEFAULT_REPORT_END_DATE = new Date().toISOString().split('T')[0];
+const DEFAULT_REPORT_START_DATE = new Date(
+  new Date(DEFAULT_REPORT_END_DATE).getTime() - 30 * 86400000
+).toISOString().split('T')[0];
 
 function AttendanceReport() {
   const supabase = createClient();
   const [data, setData] = useState<Record<string, unknown>[]>([]);
-  const [startDate, setStartDate] = useState(new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(DEFAULT_REPORT_START_DATE);
+  const [endDate, setEndDate] = useState(DEFAULT_REPORT_END_DATE);
 
   useEffect(() => {
     async function load() {

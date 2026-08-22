@@ -6,7 +6,9 @@ export function createAdminClient() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing Supabase admin environment variables');
+    throw new Error(
+      'This action requires SUPABASE_SERVICE_ROLE_KEY. Add the service_role key from Supabase Dashboard > Project Settings > API to .env.local. Never use the publishable key here.'
+    );
   }
 
   return createClient(supabaseUrl, serviceRoleKey, {

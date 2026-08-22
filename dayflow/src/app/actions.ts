@@ -6,6 +6,18 @@ import { revalidatePath } from 'next/cache';
 import type { CreateEmployeeFormData } from '@/lib/types';
 
 export async function createEmployee(formData: CreateEmployeeFormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Not authenticated' };
+
+  const { data: currentProfile } = await supabase
+    .from('profiles')
+    .select('roles:role_id(name)')
+    .eq('id', user.id)
+    .single();
+  const roleName = (currentProfile?.roles as unknown as { name: string } | null)?.name;
+  if (roleName !== 'admin') return { error: 'Administrator access required' };
+
   const admin = createAdminClient();
 
   // Check uniqueness
@@ -92,7 +104,7 @@ export async function updateEmployee(
     joiningDate?: string;
   }
 ) {
-  const admin = createAdminClient();
+  const supabase = await createClient();
 
   // Update profile
   const profileUpdate: Record<string, unknown> = {};
@@ -104,7 +116,7 @@ export async function updateEmployee(
   if (data.status) profileUpdate.status = data.status;
 
   if (Object.keys(profileUpdate).length > 0) {
-    const { error } = await admin.from('profiles').update(profileUpdate).eq('id', userId);
+    const { error } = await supabase.from('profiles').update(profileUpdate).eq('id', userId);
     if (error) return { error: error.message };
   }
 
@@ -115,7 +127,7 @@ export async function updateEmployee(
   if (data.joiningDate) jobUpdate.joining_date = data.joiningDate;
 
   if (Object.keys(jobUpdate).length > 0) {
-    const { error } = await admin.from('job_details').update(jobUpdate).eq('profile_id', userId);
+    const { error } = await supabase.from('job_details').update(jobUpdate).eq('profile_id', userId);
     if (error) return { error: error.message };
   }
 
@@ -125,8 +137,8 @@ export async function updateEmployee(
 }
 
 export async function toggleEmployeeStatus(userId: string, newStatus: 'active' | 'inactive') {
-  const admin = createAdminClient();
-  const { error } = await admin
+  const supabase = await createClient();
+  const { error } = await supabase
     .from('profiles')
     .update({ status: newStatus })
     .eq('id', userId);
@@ -212,26 +224,6 @@ export async function applyLeave(data: {
 
   if (error) return { error: error.message };
 
-  // Notify admins
-  const admin = createAdminClient();
-  const { data: adminProfiles } = await admin
-    .from('profiles')
-    .select('id, role_id, roles:role_id(name)')
-    .eq('status', 'active');
-
-  const adminIds = (adminProfiles || [])
-    .filter((p: Record<string, unknown>) => (p.roles as { name: string } | null)?.name === 'admin')
-    .map((p: Record<string, unknown>) => p.id as string);
-
-  for (const adminId of adminIds) {
-    await admin.from('notifications').insert({
-      profile_id: adminId,
-      type: 'leave_submitted',
-      title: 'New Leave Request',
-      message: `A new ${data.leaveType} leave request has been submitted.`,
-    });
-  }
-
   revalidatePath('/dashboard/leave');
   return { success: true };
 }
@@ -245,10 +237,7 @@ export async function resolveLeaveRequest(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'Not authenticated' };
 
-  // Use admin client for updating (triggers need to fire)
-  const admin = createAdminClient();
-
-  const { data: request, error: fetchError } = await admin
+  const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
     .select('*')
     .eq('id', requestId)
@@ -257,7 +246,7 @@ export async function resolveLeaveRequest(
   if (fetchError || !request) return { error: 'Leave request not found' };
   if (request.status !== 'pending') return { error: 'Request is already resolved' };
 
-  const { error } = await admin
+  const { error } = await supabase
     .from('leave_requests')
     .update({
       status,
@@ -270,7 +259,7 @@ export async function resolveLeaveRequest(
   if (error) return { error: error.message };
 
   // Notify employee
-  await admin.from('notifications').insert({
+  await supabase.from('notifications').insert({
     profile_id: request.profile_id,
     type: status === 'approved' ? 'leave_approved' : 'leave_rejected',
     title: `Leave Request ${status === 'approved' ? 'Approved' : 'Rejected'}`,
@@ -284,8 +273,8 @@ export async function resolveLeaveRequest(
 
 // Attendance actions
 export async function updateAttendanceStatus(attendanceId: string, status: string) {
-  const admin = createAdminClient();
-  const { error } = await admin
+  const supabase = await createClient();
+  const { error } = await supabase
     .from('attendance')
     .update({ status })
     .eq('id', attendanceId);
@@ -299,16 +288,16 @@ export async function updateSalaryStructure(
   profileId: string,
   data: { basicSalary: number; allowances: number; deductions: number; tax: number }
 ) {
-  const admin = createAdminClient();
+  const supabase = await createClient();
 
-  const { data: existing } = await admin
+  const { data: existing } = await supabase
     .from('salary_structures')
     .select('id')
     .eq('profile_id', profileId)
     .single();
 
   if (existing) {
-    const { error } = await admin
+    const { error } = await supabase
       .from('salary_structures')
       .update({
         basic_salary: data.basicSalary,
@@ -319,7 +308,7 @@ export async function updateSalaryStructure(
       .eq('profile_id', profileId);
     if (error) return { error: error.message };
   } else {
-    const { error } = await admin.from('salary_structures').insert({
+    const { error } = await supabase.from('salary_structures').insert({
       profile_id: profileId,
       basic_salary: data.basicSalary,
       allowances: data.allowances,
@@ -334,10 +323,10 @@ export async function updateSalaryStructure(
 }
 
 export async function generatePayslips(month: number, year: number) {
-  const admin = createAdminClient();
+  const supabase = await createClient();
 
   // Get all active employees with salary structures
-  const { data: structures } = await admin
+  const { data: structures } = await supabase
     .from('salary_structures')
     .select('*, profile:profiles(id, status)')
     .not('profile', 'is', null);
@@ -373,7 +362,7 @@ export async function generatePayslips(month: number, year: number) {
     });
 
   // Upsert payslips
-  const { error } = await admin.from('payslips').upsert(payslips, {
+  const { error } = await supabase.from('payslips').upsert(payslips, {
     onConflict: 'profile_id,month,year',
   });
 
@@ -381,7 +370,7 @@ export async function generatePayslips(month: number, year: number) {
 
   // Notify employees
   for (const payslip of payslips) {
-    await admin.from('notifications').insert({
+    await supabase.from('notifications').insert({
       profile_id: payslip.profile_id,
       type: 'payslip_generated',
       title: 'Payslip Generated',
@@ -417,5 +406,48 @@ export async function markAllNotificationsRead() {
     .eq('is_read', false);
   if (error) return { error: error.message };
   revalidatePath('/dashboard/notifications');
+  return { success: true };
+}
+
+// ============================================================
+// Department actions
+// ============================================================
+export async function createDepartment(data: { name: string; description?: string }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Not authenticated' };
+
+  const { error } = await supabase
+    .from('departments')
+    .insert({ name: data.name.trim(), description: data.description?.trim() || null });
+  if (error) return { error: error.message };
+  revalidatePath('/admin/departments');
+  return { success: true };
+}
+
+export async function updateDepartment(id: string, data: { name?: string; description?: string }) {
+  const supabase = await createClient();
+  const update: Record<string, unknown> = {};
+  if (data.name) update.name = data.name.trim();
+  if (data.description !== undefined) update.description = data.description.trim() || null;
+
+  const { error } = await supabase.from('departments').update(update).eq('id', id);
+  if (error) return { error: error.message };
+  revalidatePath('/admin/departments');
+  return { success: true };
+}
+
+export async function deleteDepartment(id: string) {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('department_id', id);
+  if (count && count > 0) {
+    return { error: `Cannot delete: ${count} employee(s) are assigned to this department. Reassign them first.` };
+  }
+  const { error } = await supabase.from('departments').delete().eq('id', id);
+  if (error) return { error: error.message };
+  revalidatePath('/admin/departments');
   return { success: true };
 }

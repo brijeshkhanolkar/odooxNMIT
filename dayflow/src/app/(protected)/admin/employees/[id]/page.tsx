@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { formatCurrency, formatDate, formatHours, formatTime, getEmploymentTypeLabel, getInitials } from '@/lib/utils';
+import { EmployeeEditor } from '@/components/employees/employee-editor';
+import { StatusToggleButton } from '@/components/employees/status-toggle-button';
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -12,7 +14,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const supabase = await createClient();
   const currentYear = new Date().getFullYear();
 
-  const [profileResult, jobResult, balanceResult, attendanceResult, leaveResult, salaryResult, documentsResult] = await Promise.all([
+  const [profileResult, jobResult, balanceResult, attendanceResult, leaveResult, salaryResult, documentsResult, departmentsResult] = await Promise.all([
     supabase.from('profiles').select('*, role:roles(name), department:departments(name)').eq('id', id).single(),
     supabase.from('job_details').select('*').eq('profile_id', id).maybeSingle(),
     supabase.from('leave_balances').select('*').eq('profile_id', id).eq('year', currentYear).maybeSingle(),
@@ -20,6 +22,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     supabase.from('leave_requests').select('*').eq('profile_id', id).order('created_at', { ascending: false }).limit(5),
     supabase.from('salary_structures').select('*').eq('profile_id', id).maybeSingle(),
     supabase.from('documents').select('*').eq('profile_id', id).order('uploaded_at', { ascending: false }),
+    supabase.from('departments').select('id, name').order('name'),
   ]);
 
   if (profileResult.error || !profileResult.data) notFound();
@@ -28,6 +31,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const job = jobResult.data as Record<string, unknown> | null;
   const balance = balanceResult.data as Record<string, number> | null;
   const salary = salaryResult.data as Record<string, number> | null;
+  const departments = (departmentsResult.data ?? []) as { id: string; name: string }[];
   const role = profile.role as unknown as { name?: string } | null;
   const department = profile.department as unknown as { name?: string } | null;
   const firstName = profile.first_name as string;
@@ -45,7 +49,24 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             <p className="text-sm text-slate-500">Employee ID: {profile.employee_id as string}</p>
           </div>
         </div>
-        <StatusBadge status={profile.status as string} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={profile.status as string} />
+          <EmployeeEditor
+            userId={id}
+            initialData={{
+              firstName,
+              lastName,
+              phone: (profile.phone as string) || '',
+              address: (profile.address as string) || '',
+              departmentId: (profile.department_id as string) || null,
+              designation: (job?.designation as string) || '',
+              employmentType: (job?.employment_type as string) || 'full_time',
+              status: profile.status as string,
+            }}
+            departments={departments}
+          />
+          <StatusToggleButton userId={id} currentStatus={profile.status as string} />
+        </div>
       </div>
 
       <Card>
